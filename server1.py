@@ -1,4 +1,3 @@
-
 from flask import Flask, render_template_string
 from flask_sock import Sock
 import json
@@ -6,12 +5,16 @@ from datetime import datetime
 from collections import deque
 import pandas as pd
 import threading
+import psycopg2
+from psycopg2 import sql
+from psycopg2.pool import SimpleConnectionPool
+import os 
 
 app = Flask(__name__)
 sock = Sock(app)
 
 # Global deque to store tick data for processing
-DEQUE_MAXLEN = 5000000
+DEQUE_MAXLEN = 50
 tick_data = deque(maxlen=DEQUE_MAXLEN)  # Adjust maxlen as needed deque of dictionaries
 
 
@@ -161,22 +164,51 @@ def ws_client_connect():
             # Append data to deque
             tick_data.append({'timestamp': tick_time, 'price': price})
             
-            logging.info(f"Tick data added: {tick_time}, {price}")
+            
+
+            # # Check if deque is full and handle it (saving data to CSV, flushing, etc.)
+            # if len(tick_data) == tick_data.maxlen:
+            #     logging.info("Deque reached maximum capacity. Flushing data...")
+                
+            #     # Save to CSV file
+            #     df = pd.DataFrame(list(tick_data))
+            #     df.to_csv('tick_data.csv', mode='a', header=False, index=False)
+
+                
+            #     # Optionally, clear the deque after saving
+            #     tick_data.clear()
+
+#####################################################################################################
+            # Save to PostgreSQL
+            # Flush if deque reaches max length
+            if len(tick_data) >= DEQUE_MAXLEN:
+                ticks_to_flush = list(tick_data)  # Copy before clearing
+                tick_data.clear()
+                push_tick_data_to_db(ticks_to_flush)
+                logging.info("Deque flushed and reset after reaching max length.")
+
+            threading.Event().wait(0.5)  # More efficient than time.sleep()
+
+
+            # logging.info(f"Tick data added: {tick_time}, {price}")
             
             # Optionally, log deque contents (last 5 items)
-            logging.info(f"Deque contents (last 5): {json.dumps(list(tick_data)[-5:], indent=4, default=str)}")
+            # logging.info(f"Deque contents (last 5): {json.dumps(list(tick_data)[-5:], indent=4, default=str)}")
             
-            # Check if deque is full and handle it (saving data to CSV, flushing, etc.)
-            if len(tick_data) == tick_data.maxlen:
-                logging.info("Deque reached maximum capacity. Flushing data...")
-                
-                # Save to CSV file
-                df = pd.DataFrame(list(tick_data))
-                df.to_csv('tick_data.csv', mode='a', header=False, index=False)
-                
-                # Optionally, clear the deque after saving
-                tick_data.clear()
-
+            # logging.info(
+            #     "Append #%d: deque size = %d\nLast 5 ticks:\n%s\n",
+            #     len(tick_data),
+            #     len(tick_data),
+            #     json.dumps(list(tick_data)[-5:], indent=4, default=str),
+            # )
+            logging.info(
+                "Tick data added: %s, %f\nAppend #%d: deque size = %d\nLast 5 ticks:\n%s\n",
+                tick_time.strftime("%Y-%m-%d %H:%M:%S.%f"), #.%f: Microsecond as a zero-padded six-digit number (e.g., .123456).
+                price,
+                len(tick_data),
+                len(tick_data),  # This is the second time len(tick_data) is being used
+                json.dumps(list(tick_data)[-5:], indent=4, default=str)
+            )
 
 
     def onerror(message):
@@ -313,6 +345,98 @@ def index():
     """
     return render_template_string(html)
 
-if __name__ == '__main__':
-    app.run()
+
+
+
+
+
+
+
+# PostgreSQL Connection Pool
+CONNECTION_STRING = "postgresql://neondb_owner:npg_Mr7uaZH1pGBP@ep-morning-art-a9w8mj9y-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
+db_pool = SimpleConnectionPool(1, 10, dsn=CONNECTION_STRING)
+
+
+
+
+
+
+def create_table_if_not_exists():
+    """Creates the 'trades_fyers' table if it does not exist."""
+    create_table_query = """
+    CREATE TABLE IF NOT EXISTS trades_fyers (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP NOT NULL,
+        price DECIMAL(18,8) NOT NULL
+    );
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = db_pool.getconn()
+        cursor = conn.cursor()
+        cursor.execute(create_table_query)
+        conn.commit()
+        logging.info("Table 'trades' ensured in the database.")
+    except Exception as error:
+        logging.error(f"Error creating table: {error}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            db_pool.putconn(conn)
+
+
+
+def push_tick_data_to_db(ticks):
+    """Bulk inserts tick data into the database."""
+    if not ticks:
+        return
+
+    insert_query = """
+    INSERT INTO trades_fyers (timestamp, price)
+    VALUES (%s, %s);
+    """
+
+    conn = None
+    cursor = None
+    try:
+        conn = db_pool.getconn()
+        cursor = conn.cursor()
+        tick_values = [(tick["timestamp"], tick["price"]) for tick in ticks]
+        cursor.executemany(insert_query, tick_values)
+        conn.commit()
+        logging.info(f"{len(ticks)} records uploaded to the database.")
+    except Exception as error:
+        logging.error(f"Error uploading data: {error}")
+        if conn:
+            conn.rollback()
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            db_pool.putconn(conn)
+
+
+
+def main():
+    """Main function to start the WebSocket, Flask server, and background tasks."""
+    # Ensure table is created before starting any threads
+    create_table_if_not_exists()
+    
+    # Start the WebSocket client thread
+    threading.Thread(target=ws_client_connect, daemon=True).start()
+    
+    port = int(os.getenv('PORT', 80))
+    print('Listening on port %s' % (port))
+    
+    app.run(debug=False, host="0.0.0.0", port=port)
+
+# Remove the duplicate main() call at the bottom of the file
+if __name__ == "__main__":
+    main()
+
+
 # wscat -c ws://127.0.0.1:5000/ws

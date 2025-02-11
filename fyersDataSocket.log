@@ -1,0 +1,2 @@
+{"level":"ERROR","location":"[<lambda>:1663] data_ws","message":"Connection to remote host was lost.","timestamp":"2025-02-11 10:15:55,524+0530","service":"FyersDataSocket"}
+{"level":"ERROR","location":"[__subscribe_resp:711] data_ws","message":{"type":"sub","code":11011,"message":"subscription failed","s":"error"},"timestamp":"2025-02-11 10:32:14,015+0530","service":"FyersDataSocket"}

@@ -17,7 +17,7 @@ app = Flask(__name__)
 sock = Sock(app)
 
 # Deque to store tick data for processing
-DEQUE_MAXLEN = 1000000
+DEQUE_MAXLEN = 100000 
 tick_data = deque(maxlen=DEQUE_MAXLEN)  # Adjust maxlen as needed
 
 # Logging Configuration
@@ -90,67 +90,6 @@ def push_tick_data_to_db(ticks):
             db_pool.putconn(conn)
 
 
-# def check_and_flush_deque():
-#     """Flushes tick data to DB when deque reaches capacity."""
-#     while True:
-#         if len(tick_data) >= DEQUE_MAXLEN:
-#             push_tick_data_to_db(list(tick_data))
-#             tick_data.clear()
-#         time.sleep(2)  # Flush interval (adjustable)
-# def check_and_flush_deque():
-#     """Flushes tick data to DB when deque reaches capacity."""
-#     while True:
-#         if len(tick_data) >= DEQUE_MAXLEN:
-#             ticks_to_flush = list(tick_data)  # Copy current data
-#             tick_data.clear()  # Clear deque before database insertion
-            
-#             push_tick_data_to_db(ticks_to_flush)  # Now insert to DB
-#             logging.info("Deque flushed and reset after reaching max length.")
-
-#         time.sleep(2)  # Flush interval (adjust as needed)
-###############################################################################################################################################
-# import threading
-
-# def check_and_flush_deque():
-#     """Flushes tick data to DB when deque reaches capacity."""
-#     while True:
-#         if len(tick_data) >= DEQUE_MAXLEN:
-#             ticks_to_flush = list(tick_data)
-#             tick_data.clear()
-#             push_tick_data_to_db(ticks_to_flush)
-#             logging.info("Deque flushed and reset after reaching max length.")
-
-#         threading.Event().wait(0.5)  # More efficient than time.sleep()
-
-
-# def ws_client_connect():
-#     """Connects to Bybit WebSocket and processes tick data."""
-#     import websocket
-
-#     ws_url = "wss://stream.bybit.com/v5/public/linear"
-
-#     def on_message(ws, message):
-#         tick = json.loads(message)
-#         if tick.get("topic") == "publicTrade.BTCUSDT":
-#             trade_data = tick["data"][0]
-#             tick_time = datetime.fromtimestamp(trade_data["T"] / 1000)
-#             price = float(trade_data["p"])
-#             tick_data.append({"timestamp": tick_time, "price": price})
-
-#             logging.info(
-#                 "Append #%d: deque size = %d\nDeque contents:\n%s\n",
-#                 len(tick_data),
-#                 len(tick_data),
-#                 json.dumps(list(tick_data)[-5:], indent=4, default=str),
-#             )
-
-#     def on_open(ws):
-#         ws.send(json.dumps({"op": "subscribe", "args": ["publicTrade.BTCUSDT"]}))
-#         logging.info("WebSocket connected and subscribed.")
-
-#     ws = websocket.WebSocketApp(ws_url, on_message=on_message)
-#     ws.on_open = on_open
-#     ws.run_forever()
 
 def ws_client_connect():
     """Connects to Bybit WebSocket and processes tick data."""
@@ -175,13 +114,34 @@ def ws_client_connect():
 
             threading.Event().wait(0.5)  # More efficient than time.sleep()
 
+            # logging.info(
+            #     "Append #%d: deque size = %d\nLast 5 ticks:\n%s\n",
+            #     len(tick_data),
+            #     len(tick_data),
+            #     json.dumps(list(tick_data)[-5:], indent=4, default=str),
+            # )
+            
+            
+            # logging.info(f"Tick data added: {tick_time}, {price}")
+            # logging.info(f"Deque contents (last 5): {json.dumps(list(tick_data)[-5:], indent=4, default=str)}")
+           
+           
+           
+           
             logging.info(
-                "Append #%d: deque size = %d\nLast 5 ticks:\n%s\n",
+                "Tick data added: %s, %f\nAppend #%d: deque size = %d\nLast 5 ticks:\n%s\n",
+                tick_time.strftime("%Y-%m-%d %H:%M:%S.%f"), #.%f: Microsecond as a zero-padded six-digit number (e.g., .123456).
+                price,
                 len(tick_data),
-                len(tick_data),
-                json.dumps(list(tick_data)[-5:], indent=4, default=str),
+                len(tick_data),  # This is the second time len(tick_data) is being used
+                json.dumps(list(tick_data)[-5:], indent=4, default=str)
             )
 
+
+            
+           
+
+    
     def on_open(ws):
         ws.send(json.dumps({"op": "subscribe", "args": ["publicTrade.BTCUSDT"]}))
         logging.info("WebSocket connected and subscribed.")
@@ -259,11 +219,10 @@ def main():
     create_table_if_not_exists()
 
     threading.Thread(target=ws_client_connect, daemon=True).start()
-    # threading.Thread(target=check_and_flush_deque, daemon=True).start()
 
     port = int(os.getenv('PORT', 80))
     print('Listening on port %s' % (port))
-    # port = int(os.environ.get("PORT", 8000))  # Get port from environment or default to 8000
+
     app.run(debug=False, host="0.0.0.0", port=port)  # Bind to 0.0.0.0 for Heroku
 
 
