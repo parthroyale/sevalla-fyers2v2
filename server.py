@@ -188,7 +188,7 @@ def ws_client_connect():
                 
                 # Create data directory if it doesn't exist
                 data_dir = '/var/lib/data'
-                os.makedirs(data_dir, exist_ok=True)
+                # os.makedirs(data_dir, exist_ok=True)
                 
                 # Save to CSV file in the data directory
                 df = pd.DataFrame(list(tick_data))
@@ -549,7 +549,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=12,
-    minute=37,
+    minute=42,
     timezone='Asia/Kolkata'
 )
 
