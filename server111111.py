@@ -32,8 +32,8 @@ logging.basicConfig(
 # Log initial state of the deque
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
-data_dir = '/var/lib/data'
-# data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
+# data_dir = '/var/lib/data'
+data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
@@ -383,7 +383,7 @@ def index():
 
 @app.route("/history")
 def historical_chart():
-    """Serves the historical chart from CSV data with timeframe selection."""
+    """Serves the historical chart from CSV data."""
     html = """
     <!DOCTYPE html>
     <html lang="en">
@@ -392,47 +392,11 @@ def historical_chart():
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Historical NIFTY Data</title>
         <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
-        <style>
-            .controls { margin: 10px; }
-            button { margin: 5px; padding: 5px 10px; }
-            .timeframe-group { 
-                margin: 5px 0;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .group-label {
-                font-weight: bold;
-                margin-right: 10px;
-            }
-        </style>
     </head>
     <body>
         <h1>Historical NIFTY Chart</h1>
-        <div class="controls">
-            <div class="timeframe-group">
-                <span class="group-label">Seconds:</span>
-                <button onclick="changeTimeframe(5/60)">5s</button>
-                <button onclick="changeTimeframe(10/60)">10s</button>
-                <button onclick="changeTimeframe(15/60)">15s</button>
-                <button onclick="changeTimeframe(30/60)">30s</button>
-                <button onclick="changeTimeframe(45/60)">45s</button>
-            </div>
-            <div class="timeframe-group">
-                <span class="group-label">Minutes:</span>
-                <button onclick="changeTimeframe(1)">1m</button>
-                <button onclick="changeTimeframe(3)">3m</button>
-                <button onclick="changeTimeframe(5)">5m</button>
-                <button onclick="changeTimeframe(15)">15m</button>
-                <button onclick="changeTimeframe(30)">30m</button>
-                <button onclick="changeTimeframe(60)">1h</button>
-            </div>
-        </div>
         <div id="chart" style="width: 100%; height: 500px;"></div>
         <script>
-            let rawData = [];
-            let currentTimeframe = 1; // Default 1 minute
-            
             const chart = LightweightCharts.createChart(document.getElementById('chart'), {
                 width: window.innerWidth,
                 height: window.innerHeight,
@@ -442,50 +406,11 @@ def historical_chart():
 
             const candleSeries = chart.addCandlestickSeries();
 
-            function processTicksToCandles(ticks, minutesPerCandle) {
-                const candles = new Map();
-                const millisecondsPerCandle = minutesPerCandle * 60 * 1000;
-                
-                ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / millisecondsPerCandle) * millisecondsPerCandle / 1000;
-                    
-                    if (!candles.has(candleTime)) {
-                        candles.set(candleTime, {
-                            time: candleTime,
-                            open: tick.price,
-                            high: tick.price,
-                            low: tick.price,
-                            close: tick.price
-                        });
-                    } else {
-                        const candle = candles.get(candleTime);
-                        candle.high = Math.max(candle.high, tick.price);
-                        candle.low = Math.min(candle.low, tick.price);
-                        candle.close = tick.price;
-                    }
-                });
-
-                return Array.from(candles.values());
-            }
-
-            function changeTimeframe(minutes) {
-                currentTimeframe = minutes;
-                const candles = processTicksToCandles(rawData, minutes);
-                candleSeries.setData(candles);
-                
-                // Update chart title with current timeframe
-                const timeframeText = minutes < 1 ? 
-                    `${Math.round(minutes * 60)}s` : 
-                    `${minutes}m`;
-                document.querySelector('h1').textContent = `Historical NIFTY Chart (${timeframeText})`;
-            }
-
             // Fetch historical data
             fetch('/historical-data')
                 .then(response => response.json())
                 .then(data => {
-                    rawData = data;
-                    changeTimeframe(currentTimeframe);
+                    candleSeries.setData(data);
                 });
         </script>
     </body>
@@ -495,22 +420,42 @@ def historical_chart():
 
 @app.route("/historical-data")
 def get_historical_data():
-    """Returns raw tick data from CSV as JSON."""
+    """Reads CSV data and returns aggregated candlestick data."""
     try:
         # Read CSV file
         csv_path = os.path.join(data_dir, 'tick_data.csv')
         df = pd.read_csv(csv_path, names=['timestamp', 'price'])
         
-        # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
+        # Convert timestamp to datetime
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
         
-        # Convert to list of dictionaries
-        ticks = df.to_dict('records')
+        # Resample to 1-minute candlesticks using separate operations
+        df_resampled = df.set_index('timestamp')
+        ohlc = pd.DataFrame()
+        ohlc['open'] = df_resampled['price'].resample('1min').first()
+        ohlc['high'] = df_resampled['price'].resample('1min').max()
+        ohlc['low'] = df_resampled['price'].resample('1min').min()
+        ohlc['close'] = df_resampled['price'].resample('1min').last()
         
-        return json.dumps(ticks)
+        # Reset index to make timestamp a column
+        ohlc = ohlc.reset_index()
+        
+        # Convert to lightweight-charts format
+        candlestick_data = []
+        for _, row in ohlc.iterrows():
+            if pd.notna(row['open']):  # Only include complete candles
+                candlestick_data.append({
+                    'time': int(row['timestamp'].timestamp()),
+                    'open': float(row['open']),
+                    'high': float(row['high']),
+                    'low': float(row['low']),
+                    'close': float(row['close'])
+                })
+        
+        return json.dumps(candlestick_data)
     
     except Exception as e:
-        logging.error(f"Error processing historical data: {e}")
+        logging.error(f"Error reading historical data: {e}")
         return json.dumps([])
 
 # PostgreSQL Connection Pool
@@ -608,7 +553,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=13,
-    minute=42,
+    minute=20,
     timezone='Asia/Kolkata'
 )
 

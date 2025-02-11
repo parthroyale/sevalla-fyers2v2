@@ -32,8 +32,8 @@ logging.basicConfig(
 # Log initial state of the deque
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
-data_dir = '/var/lib/data'
-# data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
+# data_dir = '/var/lib/data'
+data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
@@ -395,38 +395,17 @@ def historical_chart():
         <style>
             .controls { margin: 10px; }
             button { margin: 5px; padding: 5px 10px; }
-            .timeframe-group { 
-                margin: 5px 0;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .group-label {
-                font-weight: bold;
-                margin-right: 10px;
-            }
         </style>
     </head>
     <body>
         <h1>Historical NIFTY Chart</h1>
         <div class="controls">
-            <div class="timeframe-group">
-                <span class="group-label">Seconds:</span>
-                <button onclick="changeTimeframe(5/60)">5s</button>
-                <button onclick="changeTimeframe(10/60)">10s</button>
-                <button onclick="changeTimeframe(15/60)">15s</button>
-                <button onclick="changeTimeframe(30/60)">30s</button>
-                <button onclick="changeTimeframe(45/60)">45s</button>
-            </div>
-            <div class="timeframe-group">
-                <span class="group-label">Minutes:</span>
-                <button onclick="changeTimeframe(1)">1m</button>
-                <button onclick="changeTimeframe(3)">3m</button>
-                <button onclick="changeTimeframe(5)">5m</button>
-                <button onclick="changeTimeframe(15)">15m</button>
-                <button onclick="changeTimeframe(30)">30m</button>
-                <button onclick="changeTimeframe(60)">1h</button>
-            </div>
+            <button onclick="changeTimeframe(1)">1m</button>
+            <button onclick="changeTimeframe(3)">3m</button>
+            <button onclick="changeTimeframe(5)">5m</button>
+            <button onclick="changeTimeframe(15)">15m</button>
+            <button onclick="changeTimeframe(30)">30m</button>
+            <button onclick="changeTimeframe(60)">1h</button>
         </div>
         <div id="chart" style="width: 100%; height: 500px;"></div>
         <script>
@@ -444,10 +423,9 @@ def historical_chart():
 
             function processTicksToCandles(ticks, minutesPerCandle) {
                 const candles = new Map();
-                const millisecondsPerCandle = minutesPerCandle * 60 * 1000;
                 
                 ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / millisecondsPerCandle) * millisecondsPerCandle / 1000;
+                    const candleTime = Math.floor(tick.timestamp / (minutesPerCandle * 60 * 1000)) * minutesPerCandle * 60;
                     
                     if (!candles.has(candleTime)) {
                         candles.set(candleTime, {
@@ -472,12 +450,6 @@ def historical_chart():
                 currentTimeframe = minutes;
                 const candles = processTicksToCandles(rawData, minutes);
                 candleSeries.setData(candles);
-                
-                // Update chart title with current timeframe
-                const timeframeText = minutes < 1 ? 
-                    `${Math.round(minutes * 60)}s` : 
-                    `${minutes}m`;
-                document.querySelector('h1').textContent = `Historical NIFTY Chart (${timeframeText})`;
             }
 
             // Fetch historical data
@@ -608,7 +580,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=13,
-    minute=42,
+    minute=20,
     timezone='Asia/Kolkata'
 )
 
