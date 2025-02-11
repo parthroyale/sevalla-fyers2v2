@@ -32,6 +32,14 @@ logging.basicConfig(
 # Log initial state of the deque
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
+# data_dir = '/var/lib/data'
+data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
+# check if data_dir exists
+if not os.path.exists(data_dir):
+    print(f"Data directory {data_dir} does not exist.")
+else:
+    print(f"Data directory {data_dir} exists.")
+
 
 def ws_client_connect():
     """
@@ -187,10 +195,8 @@ def ws_client_connect():
                 logging.info("Deque reached maximum capacity. Flushing/Clearing deque after appending/concat to CSV...")
                 
                 # data_dir = '/var/lib/data'
-                data_dir = '/c/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
-                # check if data_dir exists
-                if not os.path.exists(data_dir):
-                    print(f"Data directory {data_dir} does not exist. )
+                # data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
+  
                           
                 # Save to CSV file in the data directory
                 df = pd.DataFrame(list(tick_data))
@@ -550,8 +556,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=12,
-    minute=42,
+    hour=13,
+    minute=17,
     timezone='Asia/Kolkata'
 )
 
