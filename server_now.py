@@ -36,9 +36,9 @@ logging.basicConfig(
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
 
-data_dir = '/var/lib/data'
+# data_dir = '/var/lib/data'
 # data_dir = 'C:/Users/acer/Documents/y2025/jan12/sevalla-fyers/data'
-# data_dir =  "C:/Users/acer/Documents/y2025/feb12/sevalla-fyers/data"
+data_dir =  "C:/Users/acer/Documents/y2025/feb12/sevalla-fyers/data"
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
@@ -513,7 +513,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=15,
-    minute=28,
+    minute=16,
     timezone='Asia/Kolkata'
 )
 
@@ -523,7 +523,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=15,
-    minute=30,
+    minute=18,
     timezone='Asia/Kolkata',
     id='stop_main'
 )
