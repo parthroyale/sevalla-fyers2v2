@@ -32,8 +32,8 @@ logging.basicConfig(
 # Log initial state of the deque
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
-# data_dir = '/var/lib/data'
-data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
+data_dir = '/var/lib/data'
+# data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
@@ -608,7 +608,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=13,
-    minute=20,
+    minute=42,
     timezone='Asia/Kolkata'
 )
 

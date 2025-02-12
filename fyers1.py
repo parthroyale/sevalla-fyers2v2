@@ -6,12 +6,11 @@ from datetime import datetime
 from collections import deque
 import pandas as pd
 import threading
-import psycopg2
-from psycopg2.pool import SimpleConnectionPool
-import os
 import logging
 import time
-from pytz import timezone
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+import os 
 
 ###################################################### Flask Setup #######################################################
 app = Flask(__name__)
@@ -23,9 +22,9 @@ DEQUE_MAXLEN = 50
 tick_data = deque(maxlen=DEQUE_MAXLEN)
 
 # Global variables for managing the Fyers WebSocket thread and graceful shutdown.
-ws_client = None  # Will hold the FyersDataSocket instance
+ws_stop_event = threading.Event()
 ws_thread = None
-# (We do not use a stop event here because we rely on the scheduler to call stop_main().)
+ws_client = None  # This will hold the FyersDataSocket instance
 
 ###################################################### Logging Configuration ###############################################
 logging.basicConfig(
@@ -34,16 +33,6 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logging.info(f"Initial tick_data: {list(tick_data)}")
-
-
-# data_dir = '/var/lib/data'
-# data_dir = 'C:/Users/acer/Documents/y2025/jan12/sevalla-fyers/data'
-data_dir =  "C:/Users/acer/Documents/y2025/feb12/sevalla-fyers/data"
-# check if data_dir exists
-if not os.path.exists(data_dir):
-    print(f"Data directory {data_dir} does not exist.")
-else:
-    print(f"Data directory {data_dir} exists.")
 
 ###################################################### SQL Setup ###########################################################
 # PostgreSQL Connection Pool
@@ -106,21 +95,20 @@ def push_tick_data_to_db(ticks):
             db_pool.putconn(conn)
 
 ###################################################### WebSocket Client Setup (Fyers) #######################################
-def ws_client_connect():
+def ws_client_connect(stop_event):
     """
-    Connects to Fyers WebSocket and populates the tick_data deque.
-    This function starts the connection and then runs indefinitely until externally closed.
+    Connects to Fyers WebSocket and processes tick data.
+    Runs until the stop_event is set.
     """
-    append_counter = 0  # Local counter
+    append_counter = 0  # Local variable
 
     import requests, time, base64, struct, hmac
     from fyers_apiv3 import fyersModel
     from urllib.parse import urlparse, parse_qs 
     pin = '8894'
-    
     class FyesApp:
         def __init__(self) -> None:
-            self.__username = 'XP12325'
+            self.__username = 'XP12325' 
             self.__totp_key = 'Q2HC7F57FHMHPRT2VRLPRWA4ORWPK34E'
             self.__pin = '8894'
             self.__client_id = "M6EQ9SEMLM-100"
@@ -193,10 +181,10 @@ def ws_client_connect():
                 auth_code = parse_qs(parsed.query)["auth_code"][0]
 
                 session = fyersModel.SessionModel(
-                    client_id=self.__client_id,
-                    secret_key=self.__secret_key,
-                    redirect_uri=self.__redirect_uri,
-                    response_type="code",
+                    client_id=self.__client_id, 
+                    secret_key=self.__secret_key, 
+                    redirect_uri=self.__redirect_uri, 
+                    response_type="code", 
                     grant_type="authorization_code"
                 )
                 session.set_token(auth_code)
@@ -207,7 +195,7 @@ def ws_client_connect():
                 logging.error(f"Error in get_token: {str(e)}")
                 raise
 
-    # Get access token
+    # Get the access token
     app_obj = FyesApp()
     access_token = app_obj.get_token()
     print(f'AcessTOKEN: {access_token}')
@@ -217,28 +205,24 @@ def ws_client_connect():
 
     def onmessage(message):
         """
-        Callback function for handling incoming messages from Fyers WebSocket.
+        Callback for incoming WebSocket messages.
         """
         nonlocal append_counter
         if isinstance(message, str):
             tick = json.loads(message)
         else:
             tick = message
-
         if "ltp" in tick:
             price = tick["ltp"]
             tick_time = datetime.now()
             tick_data.append({'timestamp': tick_time, 'price': price})
             if len(tick_data) == tick_data.maxlen:
                 logging.info("Deque reached maximum capacity. Flushing to CSV...")
-                ist = timezone('Asia/Kolkata')
-                current_date = datetime.now(ist).strftime('%b%d').lower()
-                csv_filename = f'{current_date}.csv'
                 df = pd.DataFrame(list(tick_data))
-                df.to_csv(os.path.join(data_dir, csv_filename), mode='a', header=False, index=False)
+                df.to_csv('tick_data.csv', mode='a', header=False, index=False)
                 tick_data.clear()
             logging.info(
-                "Tick data added: %s, %f\nDeque size: %d\nLast 5 ticks:\n%s\n",
+                "Tick data added: %s, %f\nDeque size: %d\nLast 5 ticks:\n%s",
                 tick_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
                 price,
                 len(tick_data),
@@ -252,8 +236,7 @@ def ws_client_connect():
         print("Connection closed:", message)
 
     def onopen():
-        # Subscribe to data using the FyersDataSocket instance.
-        # Here, we use the same instance (ws_client) to subscribe.
+        global ws_client
         data_type = "SymbolUpdate"
         symbols = ['NSE:NIFTY50-INDEX']
         ws_client.subscribe(symbols=symbols, data_type=data_type)
@@ -261,7 +244,7 @@ def ws_client_connect():
 
     global ws_client
     ws_client = data_ws.FyersDataSocket(
-        access_token=access_token,  # Note: Use your valid token here.
+        access_token=access_token,
         log_path="",
         litemode=True,
         write_to_file=False,
@@ -271,9 +254,17 @@ def ws_client_connect():
         on_error=onerror,
         on_message=onmessage
     )
-
-    # Establish the connection (this call blocks until the connection is closed)
-    ws_client.connect()
+    
+    # Run the WebSocket connection until the stop event is set.
+    while not stop_event.is_set():
+        try:
+            ws_client.connect()  # Blocking call
+        except Exception as e:
+            logging.error("WebSocket connection error: %s", e)
+        if stop_event.is_set():
+            break
+        time.sleep(1)
+    logging.info("ws_client_connect: Stop event set. Exiting thread.")
 
 ###################################################### Flask WebSocket Server #######################################################
 @sock.route("/ws")
@@ -336,198 +327,51 @@ def index():
     """
     return render_template_string(html)
 
-
-
-
-###############################################################
-
-ist = timezone('Asia/Kolkata')
-current_date = datetime.now(ist).strftime('%b%d').lower()
-csv_filename = f'{current_date}.csv'
-
-@app.route("/historical-data")
-def get_historical_data():
-    """Returns raw tick data from CSV as JSON."""
-    try:
-        # Read CSV file
-        csv_path = os.path.join(data_dir, csv_filename)
-        df = pd.read_csv(csv_path, names=['timestamp', 'price'])
-        
-        # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
-        
-        # Convert to list of dictionaries
-        ticks = df.to_dict('records')
-        
-        return json.dumps(ticks)
-    
-    except Exception as e:
-        logging.error(f"Error processing historical data: {e}")
-        return json.dumps([])
-    
-
-
-@app.route("/history")
-def historical_chart():
-    """Serves the historical chart from CSV data with timeframe selection."""
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Historical NIFTY Data</title>
-        <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
-        <style>
-            .controls { margin: 10px; }
-            button { margin: 5px; padding: 5px 10px; }
-            .timeframe-group { 
-                margin: 5px 0;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .group-label {
-                font-weight: bold;
-                margin-right: 10px;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Historical NIFTY Chart</h1>
-        <div class="controls">
-            <div class="timeframe-group">
-                <span class="group-label">Seconds:</span>
-                <button onclick="changeTimeframe(5/60)">5s</button>
-                <button onclick="changeTimeframe(10/60)">10s</button>
-                <button onclick="changeTimeframe(15/60)">15s</button>
-                <button onclick="changeTimeframe(30/60)">30s</button>
-                <button onclick="changeTimeframe(45/60)">45s</button>
-            </div>
-            <div class="timeframe-group">
-                <span class="group-label">Minutes:</span>
-                <button onclick="changeTimeframe(1)">1m</button>
-                <button onclick="changeTimeframe(3)">3m</button>
-                <button onclick="changeTimeframe(5)">5m</button>
-                <button onclick="changeTimeframe(15)">15m</button>
-                <button onclick="changeTimeframe(30)">30m</button>
-                <button onclick="changeTimeframe(60)">1h</button>
-            </div>
-        </div>
-        <div id="chart" style="width: 100%; height: 500px;"></div>
-        <script>
-            let rawData = [];
-            let currentTimeframe = 1; // Default 1 minute
-            
-            const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                priceScale: { borderColor: '#cccccc' },
-                timeScale: { borderColor: '#cccccc', timeVisible: true, secondsVisible: true }
-            });
-
-            const candleSeries = chart.addCandlestickSeries();
-
-            function processTicksToCandles(ticks, minutesPerCandle) {
-                const candles = new Map();
-                const millisecondsPerCandle = minutesPerCandle * 60 * 1000;
-                
-                ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / millisecondsPerCandle) * millisecondsPerCandle / 1000;
-                    
-                    if (!candles.has(candleTime)) {
-                        candles.set(candleTime, {
-                            time: candleTime,
-                            open: tick.price,
-                            high: tick.price,
-                            low: tick.price,
-                            close: tick.price
-                        });
-                    } else {
-                        const candle = candles.get(candleTime);
-                        candle.high = Math.max(candle.high, tick.price);
-                        candle.low = Math.min(candle.low, tick.price);
-                        candle.close = tick.price;
-                    }
-                });
-
-                return Array.from(candles.values());
-            }
-
-            function changeTimeframe(minutes) {
-                currentTimeframe = minutes;
-                const candles = processTicksToCandles(rawData, minutes);
-                candleSeries.setData(candles);
-                
-                // Update chart title with current timeframe
-                const timeframeText = minutes < 1 ? 
-                    `${Math.round(minutes * 60)}s` : 
-                    `${minutes}m`;
-                document.querySelector('h1').textContent = `Historical NIFTY Chart (${timeframeText})`;
-            }
-
-            // Fetch historical data
-            fetch('/historical-data')
-                .then(response => response.json())
-                .then(data => {
-                    rawData = data;
-                    changeTimeframe(currentTimeframe);
-                });
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-
-
-
 ###################################################### Main Flow #######################################################
 def main():
     """Starts the WebSocket client thread."""
     create_table_if_not_exists()
-    # Start ws_client_connect in a separate thread.
+    ws_stop_event.clear()
     global ws_thread
-    ws_thread = threading.Thread(target=ws_client_connect, daemon=True)
+    ws_thread = threading.Thread(target=ws_client_connect, args=(ws_stop_event,), daemon=True)
     ws_thread.start()
     logging.info("Fyers WebSocket thread started.")
 
 def stop_main():
-    """Stops the WebSocket client connection gracefully."""
-    global ws_client
-    logging.info("Stopping Fyers WebSocket connection gracefully...")
+    """Stops the WebSocket client thread gracefully."""
+    global ws_thread, ws_stop_event, ws_client
+    logging.info("Stopping Fyers WebSocket thread gracefully...")
+    ws_stop_event.set()
     if ws_client:
         try:
-            ws_client.close_connection()
+            ws_client.disconnect()  # Assumes a disconnect() method exists
             logging.info("WebSocket connection closed.")
         except Exception as e:
-            logging.error("Error closing WebSocket connection: %s", e)
+            logging.error("Error disconnecting WebSocket: %s", e)
+    if ws_thread:
+        ws_thread.join(timeout=10)
+        logging.info("Fyers WebSocket thread stopped.")
 
 ###################################################### Scheduler Setup #######################################################
 from apscheduler.schedulers.background import BackgroundScheduler
 scheduler = BackgroundScheduler(daemon=True)
-
-# Schedule main() to start the WebSocket client (adjust the time as needed)
 scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=15,
-    minute=16,
+    hour=13,
+    minute=31,
     timezone='Asia/Kolkata'
 )
-
-# Schedule stop_main() to close the connection at a specified time
 scheduler.add_job(
     stop_main,
     'cron',
     day_of_week='mon-fri',
-    hour=15,
-    minute=18,
+    hour=13,
+    minute=3,
     timezone='Asia/Kolkata',
     id='stop_main'
 )
-
 scheduler.start()
 
 ###################################################### Start Flask App #######################################################

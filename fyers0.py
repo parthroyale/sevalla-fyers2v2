@@ -32,14 +32,6 @@ logging.basicConfig(
 # Log initial state of the deque
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
-# data_dir = '/var/lib/data'
-data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
-# check if data_dir exists
-if not os.path.exists(data_dir):
-    print(f"Data directory {data_dir} does not exist.")
-else:
-    print(f"Data directory {data_dir} exists.")
-
 
 def ws_client_connect():
     """
@@ -194,13 +186,13 @@ def ws_client_connect():
             if len(tick_data) == tick_data.maxlen:
                 logging.info("Deque reached maximum capacity. Flushing/Clearing deque after appending/concat to CSV...")
                 
-                # data_dir = '/var/lib/data'
-                # data_dir = 'C:/Users/acer/Documents/y2025/jan6/sevalla-fyers/data'
-  
-                          
-                # Save to CSV file in the data directory
+                # ticks_to_flush = tick_data  # Copy before clearing
+                # tick_data.clear() 
+                
+                # Save to CSV file
                 df = pd.DataFrame(list(tick_data))
-                df.to_csv(os.path.join(data_dir, 'tick_data.csv'), mode='a', header=False, index=False)
+                df.to_csv('tick_data.csv', mode='a', header=False, index=False)
+                # logging.info("Deque flushed and reset after reaching max length.")
                 
                 # Optionally, clear the deque after saving
                 tick_data.clear()
@@ -381,109 +373,12 @@ def index():
     """
     return render_template_string(html)
 
-@app.route("/history")
-def historical_chart():
-    """Serves the historical chart from CSV data with timeframe selection."""
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Historical NIFTY Data</title>
-        <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
-        <style>
-            .controls { margin: 10px; }
-            button { margin: 5px; padding: 5px 10px; }
-        </style>
-    </head>
-    <body>
-        <h1>Historical NIFTY Chart</h1>
-        <div class="controls">
-            <button onclick="changeTimeframe(1)">1m</button>
-            <button onclick="changeTimeframe(3)">3m</button>
-            <button onclick="changeTimeframe(5)">5m</button>
-            <button onclick="changeTimeframe(15)">15m</button>
-            <button onclick="changeTimeframe(30)">30m</button>
-            <button onclick="changeTimeframe(60)">1h</button>
-        </div>
-        <div id="chart" style="width: 100%; height: 500px;"></div>
-        <script>
-            let rawData = [];
-            let currentTimeframe = 1; // Default 1 minute
-            
-            const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                priceScale: { borderColor: '#cccccc' },
-                timeScale: { borderColor: '#cccccc', timeVisible: true, secondsVisible: true }
-            });
 
-            const candleSeries = chart.addCandlestickSeries();
 
-            function processTicksToCandles(ticks, minutesPerCandle) {
-                const candles = new Map();
-                
-                ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / (minutesPerCandle * 60 * 1000)) * minutesPerCandle * 60;
-                    
-                    if (!candles.has(candleTime)) {
-                        candles.set(candleTime, {
-                            time: candleTime,
-                            open: tick.price,
-                            high: tick.price,
-                            low: tick.price,
-                            close: tick.price
-                        });
-                    } else {
-                        const candle = candles.get(candleTime);
-                        candle.high = Math.max(candle.high, tick.price);
-                        candle.low = Math.min(candle.low, tick.price);
-                        candle.close = tick.price;
-                    }
-                });
 
-                return Array.from(candles.values());
-            }
 
-            function changeTimeframe(minutes) {
-                currentTimeframe = minutes;
-                const candles = processTicksToCandles(rawData, minutes);
-                candleSeries.setData(candles);
-            }
 
-            // Fetch historical data
-            fetch('/historical-data')
-                .then(response => response.json())
-                .then(data => {
-                    rawData = data;
-                    changeTimeframe(currentTimeframe);
-                });
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
 
-@app.route("/historical-data")
-def get_historical_data():
-    """Returns raw tick data from CSV as JSON."""
-    try:
-        # Read CSV file
-        csv_path = os.path.join(data_dir, 'tick_data.csv')
-        df = pd.read_csv(csv_path, names=['timestamp', 'price'])
-        
-        # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
-        
-        # Convert to list of dictionaries
-        ticks = df.to_dict('records')
-        
-        return json.dumps(ticks)
-    
-    except Exception as e:
-        logging.error(f"Error processing historical data: {e}")
-        return json.dumps([])
 
 # PostgreSQL Connection Pool
 CONNECTION_STRING = "postgresql://neondb_owner:npg_Mr7uaZH1pGBP@ep-morning-art-a9w8mj9y-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
@@ -555,6 +450,7 @@ def push_tick_data_to_db(ticks):
 
 
 
+
 def main():
     """Main function to start the WebSocket, Flask server, and background tasks."""
     # Ensure table is created before starting any threads
@@ -579,8 +475,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=13,
-    minute=20,
+    hour=11,
+    minute=55,
     timezone='Asia/Kolkata'
 )
 

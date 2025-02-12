@@ -35,16 +35,6 @@ logging.basicConfig(
 )
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
-
-# data_dir = '/var/lib/data'
-# data_dir = 'C:/Users/acer/Documents/y2025/jan12/sevalla-fyers/data'
-data_dir =  "C:/Users/acer/Documents/y2025/feb12/sevalla-fyers/data"
-# check if data_dir exists
-if not os.path.exists(data_dir):
-    print(f"Data directory {data_dir} does not exist.")
-else:
-    print(f"Data directory {data_dir} exists.")
-
 ###################################################### SQL Setup ###########################################################
 # PostgreSQL Connection Pool
 CONNECTION_STRING = "postgresql://neondb_owner:npg_Mr7uaZH1pGBP@ep-morning-art-a9w8mj9y-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
@@ -235,7 +225,7 @@ def ws_client_connect():
                 current_date = datetime.now(ist).strftime('%b%d').lower()
                 csv_filename = f'{current_date}.csv'
                 df = pd.DataFrame(list(tick_data))
-                df.to_csv(os.path.join(data_dir, csv_filename), mode='a', header=False, index=False)
+                df.to_csv(csv_filename, mode='a', header=False, index=False)
                 tick_data.clear()
             logging.info(
                 "Tick data added: %s, %f\nDeque size: %d\nLast 5 ticks:\n%s\n",
@@ -336,152 +326,6 @@ def index():
     """
     return render_template_string(html)
 
-
-
-
-###############################################################
-
-ist = timezone('Asia/Kolkata')
-current_date = datetime.now(ist).strftime('%b%d').lower()
-csv_filename = f'{current_date}.csv'
-
-@app.route("/historical-data")
-def get_historical_data():
-    """Returns raw tick data from CSV as JSON."""
-    try:
-        # Read CSV file
-        csv_path = os.path.join(data_dir, csv_filename)
-        df = pd.read_csv(csv_path, names=['timestamp', 'price'])
-        
-        # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
-        
-        # Convert to list of dictionaries
-        ticks = df.to_dict('records')
-        
-        return json.dumps(ticks)
-    
-    except Exception as e:
-        logging.error(f"Error processing historical data: {e}")
-        return json.dumps([])
-    
-
-
-@app.route("/history")
-def historical_chart():
-    """Serves the historical chart from CSV data with timeframe selection."""
-    html = """
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Historical NIFTY Data</title>
-        <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
-        <style>
-            .controls { margin: 10px; }
-            button { margin: 5px; padding: 5px 10px; }
-            .timeframe-group { 
-                margin: 5px 0;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .group-label {
-                font-weight: bold;
-                margin-right: 10px;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Historical NIFTY Chart</h1>
-        <div class="controls">
-            <div class="timeframe-group">
-                <span class="group-label">Seconds:</span>
-                <button onclick="changeTimeframe(5/60)">5s</button>
-                <button onclick="changeTimeframe(10/60)">10s</button>
-                <button onclick="changeTimeframe(15/60)">15s</button>
-                <button onclick="changeTimeframe(30/60)">30s</button>
-                <button onclick="changeTimeframe(45/60)">45s</button>
-            </div>
-            <div class="timeframe-group">
-                <span class="group-label">Minutes:</span>
-                <button onclick="changeTimeframe(1)">1m</button>
-                <button onclick="changeTimeframe(3)">3m</button>
-                <button onclick="changeTimeframe(5)">5m</button>
-                <button onclick="changeTimeframe(15)">15m</button>
-                <button onclick="changeTimeframe(30)">30m</button>
-                <button onclick="changeTimeframe(60)">1h</button>
-            </div>
-        </div>
-        <div id="chart" style="width: 100%; height: 500px;"></div>
-        <script>
-            let rawData = [];
-            let currentTimeframe = 1; // Default 1 minute
-            
-            const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                priceScale: { borderColor: '#cccccc' },
-                timeScale: { borderColor: '#cccccc', timeVisible: true, secondsVisible: true }
-            });
-
-            const candleSeries = chart.addCandlestickSeries();
-
-            function processTicksToCandles(ticks, minutesPerCandle) {
-                const candles = new Map();
-                const millisecondsPerCandle = minutesPerCandle * 60 * 1000;
-                
-                ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / millisecondsPerCandle) * millisecondsPerCandle / 1000;
-                    
-                    if (!candles.has(candleTime)) {
-                        candles.set(candleTime, {
-                            time: candleTime,
-                            open: tick.price,
-                            high: tick.price,
-                            low: tick.price,
-                            close: tick.price
-                        });
-                    } else {
-                        const candle = candles.get(candleTime);
-                        candle.high = Math.max(candle.high, tick.price);
-                        candle.low = Math.min(candle.low, tick.price);
-                        candle.close = tick.price;
-                    }
-                });
-
-                return Array.from(candles.values());
-            }
-
-            function changeTimeframe(minutes) {
-                currentTimeframe = minutes;
-                const candles = processTicksToCandles(rawData, minutes);
-                candleSeries.setData(candles);
-                
-                // Update chart title with current timeframe
-                const timeframeText = minutes < 1 ? 
-                    `${Math.round(minutes * 60)}s` : 
-                    `${minutes}m`;
-                document.querySelector('h1').textContent = `Historical NIFTY Chart (${timeframeText})`;
-            }
-
-            // Fetch historical data
-            fetch('/historical-data')
-                .then(response => response.json())
-                .then(data => {
-                    rawData = data;
-                    changeTimeframe(currentTimeframe);
-                });
-        </script>
-    </body>
-    </html>
-    """
-    return render_template_string(html)
-
-
-
-
 ###################################################### Main Flow #######################################################
 def main():
     """Starts the WebSocket client thread."""
@@ -513,7 +357,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=15,
-    minute=16,
+    minute=3,
     timezone='Asia/Kolkata'
 )
 
@@ -523,7 +367,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=15,
-    minute=18,
+    minute=5,
     timezone='Asia/Kolkata',
     id='stop_main'
 )
