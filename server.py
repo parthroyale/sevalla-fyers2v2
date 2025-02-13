@@ -45,65 +45,65 @@ if not os.path.exists(data_dir):
 else:
     print(f"Data directory {data_dir} exists.")
 
-###################################################### SQL Setup ###########################################################
-# PostgreSQL Connection Pool
-CONNECTION_STRING = "postgresql://neondb_owner:npg_Mr7uaZH1pGBP@ep-morning-art-a9w8mj9y-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
-db_pool = SimpleConnectionPool(1, 10, dsn=CONNECTION_STRING)
+# ###################################################### SQL Setup ###########################################################
+# # PostgreSQL Connection Pool
+# CONNECTION_STRING = "postgresql://neondb_owner:npg_Mr7uaZH1pGBP@ep-morning-art-a9w8mj9y-pooler.gwc.azure.neon.tech/neondb?sslmode=require"
+# db_pool = SimpleConnectionPool(1, 10, dsn=CONNECTION_STRING)
 
-def create_table_if_not_exists():
-    """Creates the 'trades_fyers' table if it does not exist."""
-    create_table_query = """
-    CREATE TABLE IF NOT EXISTS trades_fyers (
-        id SERIAL PRIMARY KEY,
-        timestamp TIMESTAMP NOT NULL,
-        price DECIMAL(18,8) NOT NULL
-    );
-    """
-    conn = None
-    cursor = None
-    try:
-        conn = db_pool.getconn()
-        cursor = conn.cursor()
-        cursor.execute(create_table_query)
-        conn.commit()
-        logging.info("Table 'trades_fyers' ensured in the database.")
-    except Exception as error:
-        logging.error(f"Error creating table: {error}")
-        if conn:
-            conn.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            db_pool.putconn(conn)
+# def create_table_if_not_exists():
+#     """Creates the 'trades_fyers' table if it does not exist."""
+#     create_table_query = """
+#     CREATE TABLE IF NOT EXISTS trades_fyers (
+#         id SERIAL PRIMARY KEY,
+#         timestamp TIMESTAMP NOT NULL,
+#         price DECIMAL(18,8) NOT NULL
+#     );
+#     """
+#     conn = None
+#     cursor = None
+#     try:
+#         conn = db_pool.getconn()
+#         cursor = conn.cursor()
+#         cursor.execute(create_table_query)
+#         conn.commit()
+#         logging.info("Table 'trades_fyers' ensured in the database.")
+#     except Exception as error:
+#         logging.error(f"Error creating table: {error}")
+#         if conn:
+#             conn.rollback()
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             db_pool.putconn(conn)
 
-def push_tick_data_to_db(ticks):
-    """Bulk inserts tick data into the database."""
-    if not ticks:
-        return
+# def push_tick_data_to_db(ticks):
+#     """Bulk inserts tick data into the database."""
+#     if not ticks:
+#         return
 
-    insert_query = """
-    INSERT INTO trades_fyers (timestamp, price)
-    VALUES (%s, %s);
-    """
-    conn = None
-    cursor = None
-    try:
-        conn = db_pool.getconn()
-        cursor = conn.cursor()
-        tick_values = [(tick["timestamp"], tick["price"]) for tick in ticks]
-        cursor.executemany(insert_query, tick_values)
-        conn.commit()
-        logging.info(f"{len(ticks)} records uploaded to the database.")
-    except Exception as error:
-        logging.error(f"Error uploading data: {error}")
-        if conn:
-            conn.rollback()
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            db_pool.putconn(conn)
+#     insert_query = """
+#     INSERT INTO trades_fyers (timestamp, price)
+#     VALUES (%s, %s);
+#     """
+#     conn = None
+#     cursor = None
+#     try:
+#         conn = db_pool.getconn()
+#         cursor = conn.cursor()
+#         tick_values = [(tick["timestamp"], tick["price"]) for tick in ticks]
+#         cursor.executemany(insert_query, tick_values)
+#         conn.commit()
+#         logging.info(f"{len(ticks)} records uploaded to the database.")
+#     except Exception as error:
+#         logging.error(f"Error uploading data: {error}")
+#         if conn:
+#             conn.rollback()
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             db_pool.putconn(conn)
 
 ###################################################### WebSocket Client Setup (Fyers) #######################################
 def ws_client_connect():
@@ -485,7 +485,7 @@ def historical_chart():
 ###################################################### Main Flow #######################################################
 def main():
     """Starts the WebSocket client thread."""
-    create_table_if_not_exists()
+    # create_table_if_not_exists()
     # Start ws_client_connect in a separate thread.
     global ws_thread
     ws_thread = threading.Thread(target=ws_client_connect, daemon=True)
@@ -512,8 +512,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=9,
-    minute=14,
+    hour=13,
+    minute=40,
     timezone='Asia/Kolkata'
 )
 
