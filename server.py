@@ -512,8 +512,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=15,
-    minute=30,
+    hour=9,
+    minute=14,
     timezone='Asia/Kolkata'
 )
 
@@ -523,7 +523,7 @@ scheduler.add_job(
     'cron',
     day_of_week='mon-fri',
     hour=15,
-    minute=34,
+    minute=31,
     timezone='Asia/Kolkata',
     id='stop_main'
 )
