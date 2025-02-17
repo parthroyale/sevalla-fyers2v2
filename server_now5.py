@@ -367,11 +367,9 @@ def get_historical_data():
             
         df = pd.read_csv(csv_path, names=['timestamp', 'price'])
         
-        # # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        # df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
-        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize('Asia/Kolkata').dt.tz_convert('UTC')
-        df['timestamp'] = df['timestamp'].astype(int) // 10**6  # Convert to milliseconds
-
+        # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
+        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
+        
         # Convert to list of dictionaries
         ticks = df.to_dict('records')
         
@@ -443,10 +441,11 @@ def historical_chart():
                     borderColor: '#cccccc', 
                     timeVisible: true, 
                     secondsVisible: true,
-                     tickMarkFormatter:  function (time) {
-        var date = new Date(time * 1000);
-        return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-    }
+                     tickMarkFormatter: (time) => {
+          const date = new Date(time * 1000);
+          // Force IST (Asia/Kolkata) regardless of the system's timezone.
+          return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+        }
                 }
             });
 
