@@ -6,6 +6,8 @@ from datetime import datetime
 from collections import deque
 import pandas as pd
 import threading
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
 import os
 import logging
 import time
@@ -36,7 +38,7 @@ logging.info(f"Initial tick_data: {list(tick_data)}")
 
 # data_dir = '/var/lib/data'
 # data_dir = 'C:/Users/acer/Documents/y2025/jan12/sevalla-fyers/data'
-data_dir =  "C:/Users/acer/Documents/y2025/feb13/sevalla-fyers2/data"
+data_dir =  "C:/Users/acerno/Documents/y2025/feb12/sevalla-fyers/data"
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
@@ -297,24 +299,14 @@ def index():
         <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
     </head>
     <body>
-        <h1>Live NIFTY Tick Chart (IST)</h1>
+        <h1>Live BTC/USDT Tick Chart</h1>
         <div id="chart" style="width: 100%; height: 500px;"></div>
 <script>
     const chart = LightweightCharts.createChart(document.getElementById('chart'), {
         width: window.innerWidth,
         height: window.innerHeight,
         priceScale: { borderColor: '#cccccc' },
-        timeScale: { 
-            borderColor: '#cccccc', 
-            timeVisible: true, 
-            secondsVisible: true,
-            tickMarkFormatter: (time) => {
-                const date = new Date(time * 1000);
-                // Add 5 hours and 30 minutes for IST
-                date.setTime(date.getTime() + (5.5 * 60 * 60 * 1000));
-                return date.toLocaleTimeString('en-IN');
-            }
-        }
+        timeScale: { borderColor: '#cccccc', timeVisible: true, secondsVisible: true }
     });
     const candleSeries = chart.addCandlestickSeries();
     const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
@@ -359,12 +351,6 @@ def get_historical_data():
     try:
         # Read CSV file
         csv_path = os.path.join(data_dir, csv_filename)
-        
-        # Check if file exists
-        if not os.path.exists(csv_path):
-            logging.warning(f"Historical data file not found: {csv_filename}")
-            return json.dumps({"error": "No historical data available yet", "data": []})
-            
         df = pd.read_csv(csv_path, names=['timestamp', 'price'])
         
         # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
@@ -377,7 +363,7 @@ def get_historical_data():
     
     except Exception as e:
         logging.error(f"Error processing historical data: {e}")
-        return json.dumps({"error": str(e), "data": []})
+        return json.dumps([])
     
 
 
@@ -408,7 +394,7 @@ def historical_chart():
         </style>
     </head>
     <body>
-        <h1>Historical NIFTY Chart (IST)</h1>
+        <h1>Historical NIFTY Chart</h1>
         <div class="controls">
             <div class="timeframe-group">
                 <span class="group-label">Seconds:</span>
@@ -437,17 +423,7 @@ def historical_chart():
                 width: window.innerWidth,
                 height: window.innerHeight,
                 priceScale: { borderColor: '#cccccc' },
-                timeScale: { 
-                    borderColor: '#cccccc', 
-                    timeVisible: true, 
-                    secondsVisible: true,
-                    tickMarkFormatter: (time) => {
-                        const date = new Date(time * 1000);
-                        // Add 5 hours and 30 minutes for IST
-                        date.setTime(date.getTime() + (5.5 * 60 * 60 * 1000));
-                        return date.toLocaleTimeString('en-IN');
-                    }
-                }
+                timeScale: { borderColor: '#cccccc', timeVisible: true, secondsVisible: true }
             });
 
             const candleSeries = chart.addCandlestickSeries();
@@ -493,12 +469,9 @@ def historical_chart():
             // Fetch historical data
             fetch('/historical-data')
                 .then(response => response.json())
-                .then(jsonData => {
-                    rawData = jsonData.data;  // Access the 'data' field from the response
+                .then(data => {
+                    rawData = data;
                     changeTimeframe(currentTimeframe);
-                })
-                .catch(error => {
-                    console.error('Error fetching historical data:', error);
                 });
         </script>
     </body>
@@ -539,8 +512,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=14,
-    minute=48,
+    hour=9,
+    minute=15,
     timezone='Asia/Kolkata'
 )
 

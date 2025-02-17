@@ -493,12 +493,9 @@ def historical_chart():
             // Fetch historical data
             fetch('/historical-data')
                 .then(response => response.json())
-                .then(jsonData => {
-                    rawData = jsonData.data;  // Access the 'data' field from the response
+                .then(data => {
+                    rawData = data;
                     changeTimeframe(currentTimeframe);
-                })
-                .catch(error => {
-                    console.error('Error fetching historical data:', error);
                 });
         </script>
     </body>
@@ -539,8 +536,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=14,
-    minute=48,
+    hour=9,
+    minute=15,
     timezone='Asia/Kolkata'
 )
 
