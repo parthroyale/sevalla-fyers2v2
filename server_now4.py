@@ -441,11 +441,12 @@ def historical_chart():
                     borderColor: '#cccccc', 
                     timeVisible: true, 
                     secondsVisible: true,
-                     tickMarkFormatter: (time) => {
-          const date = new Date(time * 1000);
-          // Force IST (Asia/Kolkata) regardless of the system's timezone.
-          return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-        }
+                    tickMarkFormatter: (time) => {
+                        const date = new Date(time * 1000);
+                        // Add 5 hours and 30 minutes for IST
+                        date.setTime(date.getTime() + (5.5 * 60 * 60 * 1000));
+                        return date.toLocaleTimeString('en-IN');
+                    }
                 }
             });
 
@@ -538,8 +539,8 @@ scheduler.add_job(
     main,
     'cron',
     day_of_week='mon-fri',
-    hour=15,
-    minute=20,
+    hour=14,
+    minute=53,
     timezone='Asia/Kolkata'
 )
 
