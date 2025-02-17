@@ -34,9 +34,9 @@ logging.basicConfig(
 logging.info(f"Initial tick_data: {list(tick_data)}")
 
 
-# data_dir = '/var/lib/data'
+data_dir = '/var/lib/data'
 # data_dir = 'C:/Users/acer/Documents/y2025/jan12/sevalla-fyers/data'
-data_dir =  "C:/Users/acer/Documents/y2025/feb13/sevalla-fyers2/data"
+# data_dir =  "C:/Users/acer/Documents/y2025/feb13/sevalla-fyers2/data"
 # check if data_dir exists
 if not os.path.exists(data_dir):
     print(f"Data directory {data_dir} does not exist.")
