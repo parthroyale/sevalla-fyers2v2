@@ -303,7 +303,7 @@ def ws_client_connect():
     ws_client = data_ws.FyersDataSocket(
         access_token=access_token,  # Note: Use your valid token here.
         log_path="",
-        litemode=True,
+        litemode=False,
         write_to_file=False,
         reconnect=True,
         on_connect=onopen,
