@@ -213,20 +213,63 @@ def ws_client_connect():
     client_id = "M6EQ9SEMLM-100"
     from fyers_apiv3.FyersWebsocket import data_ws
 
+    # def onmessage(message):
+    #     """
+    #     Callback function for handling incoming messages from Fyers WebSocket.
+    #     """
+    #     nonlocal append_counter
+    #     if isinstance(message, str):
+    #         tick = json.loads(message)
+    #     else:
+    #         tick = message
+
+    #     if "ltp" in tick:
+    #         price = tick["ltp"]
+    #         tick_time = datetime.now()
+    #         tick_data.append({'timestamp': tick_time, 'price': price})
+    #         if len(tick_data) == tick_data.maxlen:
+    #             logging.info("Deque reached maximum capacity. Flushing to CSV...")
+    #             ist = timezone('Asia/Kolkata')
+    #             current_date = datetime.now(ist).strftime('%b%d').lower()
+    #             csv_filename = f'{current_date}.csv'
+    #             df = pd.DataFrame(list(tick_data))
+    #             df.to_csv(os.path.join(data_dir, csv_filename), mode='a', header=False, index=False)
+    #             tick_data.clear()
+    #         logging.info(
+    #             "Tick data added: %s, %f\nDeque size: %d\nLast 5 ticks:\n%s\n",
+    #             tick_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
+    #             price,
+    #             len(tick_data),
+    #             json.dumps(list(tick_data)[-5:], indent=4, default=str)
+    #         )
+
     def onmessage(message):
         """
         Callback function for handling incoming messages from Fyers WebSocket.
         """
-        nonlocal append_counter
+        logging.info(f"Raw message received: {message}")
+        
         if isinstance(message, str):
-            tick = json.loads(message)
+            try:
+                tick = json.loads(message)
+                logging.info(f"Parsed JSON message: {tick}")
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse JSON message: {e}")
+                return
         else:
             tick = message
 
-        if "ltp" in tick:
+        # Check if this is a market data message (has 'ltp' and 'exch_feed_time')
+        if "ltp" in tick and "exch_feed_time" in tick:
             price = tick["ltp"]
-            tick_time = datetime.now()
+            # Convert exchange feed time to datetime
+            tick_time = datetime.utcfromtimestamp(tick["exch_feed_time"])
+            
+            
             tick_data.append({'timestamp': tick_time, 'price': price})
+            logging.info(f"Added tick data: price={price}, time={tick_time}")
+            logging.info(f"Current deque size: {len(tick_data)}")
+            
             if len(tick_data) == tick_data.maxlen:
                 logging.info("Deque reached maximum capacity. Flushing to CSV...")
                 ist = timezone('Asia/Kolkata')
@@ -235,13 +278,12 @@ def ws_client_connect():
                 df = pd.DataFrame(list(tick_data))
                 df.to_csv(os.path.join(data_dir, csv_filename), mode='a', header=False, index=False)
                 tick_data.clear()
-            logging.info(
-                "Tick data added: %s, %f\nDeque size: %d\nLast 5 ticks:\n%s\n",
-                tick_time.strftime("%Y-%m-%d %H:%M:%S.%f"),
-                price,
-                len(tick_data),
-                json.dumps(list(tick_data)[-5:], indent=4, default=str)
-            )
+                logging.info("CSV file updated and deque cleared")
+        elif "type" in tick and tick["type"] in ["cn", "ful", "sub"]:
+            # These are connection/subscription messages, not market data
+            logging.info(f"Received system message: {tick['type']} - {tick.get('message', '')}")
+        else:
+            logging.warning(f"Unexpected message format: {tick}")
 
     def onerror(message):
         print("Error:", message)
@@ -293,7 +335,7 @@ def index():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Live BTC/USDT Tick Data</title>
+        <title>Live NIFTY Tick Data</title>
         <script src="https://cdn.jsdelivr.net/gh/parth-royale/cdn@main/lightweight-charts.standalone.production.js"></script>
     </head>
     <body>
@@ -307,13 +349,7 @@ def index():
         timeScale: { 
             borderColor: '#cccccc', 
             timeVisible: true, 
-            secondsVisible: true,
-            tickMarkFormatter: (time) => {
-                const date = new Date(time * 1000);
-                // Add 5 hours and 30 minutes for IST
-                date.setTime(date.getTime() + (5.5 * 60 * 60 * 1000));
-                return date.toLocaleTimeString('en-IN');
-            }
+            secondsVisible: true
         }
     });
     const candleSeries = chart.addCandlestickSeries();
@@ -321,7 +357,8 @@ def index():
     let lastCandle = null;
     ws.onmessage = function(event) {
         const tick = JSON.parse(event.data);
-        const tickTime = new Date(tick.timestamp).getTime() / 1000;
+        // Convert UTC timestamp to Unix timestamp (seconds) and add IST offset
+        const tickTime = new Date(tick.timestamp).getTime() / 1000 + 19800;
         if (!lastCandle || tickTime >= lastCandle.time + 60) {
             lastCandle = {
                 time: tickTime,
@@ -367,10 +404,15 @@ def get_historical_data():
             
         df = pd.read_csv(csv_path, names=['timestamp', 'price'])
         
-        # # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
-        # df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**6
-        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize('Asia/Kolkata').dt.tz_convert('UTC')
-        df['timestamp'] = df['timestamp'].astype(int) // 10**6  # Convert to milliseconds
+        
+        # Convert timestamp to Unix timestamp (seconds) and add IST offset (5:30 hours = 19800 seconds)
+        df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // 10**9 + 19800
+
+
+        # # # Convert timestamp to datetime and then to Unix timestamp (milliseconds)
+        # # df['timestamp'] = pd.to_datetime(df['timestamp']).astype(int) // &**6
+        # df['timestamp'] = pd.to_datetime(df['timestamp']).dt.tz_localize('Asia/Kolkata').dt.tz_convert('UTC')
+        # df['timestamp'] = df['timestamp'].astype(int) // 10**6  # Convert to milliseconds
 
         # Convert to list of dictionaries
         ticks = df.to_dict('records')
@@ -442,23 +484,19 @@ def historical_chart():
                 timeScale: { 
                     borderColor: '#cccccc', 
                     timeVisible: true, 
-                    secondsVisible: true,
-                     tickMarkFormatter:  function (time) {
-        var date = new Date(time * 1000);
-        return date.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
-    }
-                }
+                    secondsVisible: true
+                },
             });
 
             const candleSeries = chart.addCandlestickSeries();
 
             function processTicksToCandles(ticks, minutesPerCandle) {
                 const candles = new Map();
-                const millisecondsPerCandle = minutesPerCandle * 60 * 1000;
-                
+                const secondsPerCandle = minutesPerCandle * 60;
+
                 ticks.forEach(tick => {
-                    const candleTime = Math.floor(tick.timestamp / millisecondsPerCandle) * millisecondsPerCandle / 1000;
-                    
+                    const candleTime = Math.floor(tick.timestamp / secondsPerCandle) * secondsPerCandle;
+
                     if (!candles.has(candleTime)) {
                         candles.set(candleTime, {
                             time: candleTime,
@@ -494,7 +532,11 @@ def historical_chart():
             fetch('/historical-data')
                 .then(response => response.json())
                 .then(jsonData => {
-                    rawData = jsonData.data;  // Access the 'data' field from the response
+                    if (jsonData.error) {
+                        console.error('Error:', jsonData.error);
+                        return;
+                    }
+                    rawData = jsonData.data;
                     changeTimeframe(currentTimeframe);
                 })
                 .catch(error => {
